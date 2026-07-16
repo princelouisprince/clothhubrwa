@@ -27,6 +27,14 @@ export const uploadProductImage = async (file) => {
 
   console.log('Starting image upload...', file.name);
   
+  // Check if user is authenticated in Supabase Auth
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    throw new Error('You must be logged in to upload images. Please log in again.');
+  }
+  
+  console.log('User authenticated:', session.user.email);
+  
   // Generate a unique filename to prevent overwriting
   const fileExt = file.name.split('.').pop();
   const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
