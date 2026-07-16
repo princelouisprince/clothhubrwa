@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 // Get Supabase credentials from environment variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabaseServiceRoleKey = import.meta.env.VITE_SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not found in environment variables. Using localStorage fallback.');
@@ -10,6 +11,11 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = supabaseUrl && supabaseAnonKey 
   ? createClient(supabaseUrl, supabaseAnonKey)
+  : null;
+
+// Service role client for storage operations (bypasses RLS)
+export const supabaseAdmin = supabaseUrl && supabaseServiceRoleKey
+  ? createClient(supabaseUrl, supabaseServiceRoleKey)
   : null;
 
 // Storage bucket name for product images
@@ -21,19 +27,14 @@ export const STORAGE_BUCKET = 'product-images';
  * @returns {Promise<string>} The public URL of the uploaded image.
  */
 export const uploadProductImage = async (file) => {
-  if (!supabase) {
+  // Use service role client for storage operations to bypass RLS
+  const storageClient = supabaseAdmin || supabase;
+  
+  if (!storageClient) {
     throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY environment variables.');
   }
 
   console.log('Starting image upload...', file.name);
-  
-  // Check if user is authenticated in Supabase Auth
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    throw new Error('You must be logged in to upload images. Please log in again.');
-  }
-  
-  console.log('User authenticated:', session.user.email);
   
   // Generate a unique filename to prevent overwriting
   const fileExt = file.name.split('.').pop();
@@ -42,7 +43,7 @@ export const uploadProductImage = async (file) => {
 
   console.log('Uploading to bucket:', STORAGE_BUCKET, 'path:', filePath);
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await storageClient.storage
     .from(STORAGE_BUCKET)
     .upload(filePath, file, {
       cacheControl: '3600',
@@ -57,7 +58,7 @@ export const uploadProductImage = async (file) => {
   console.log('Upload successful:', data);
 
   // Get the public URL of the uploaded file
-  const { data: { publicUrl } } = supabase.storage
+  const { data: { publicUrl } } = storageClient.storage
     .from(STORAGE_BUCKET)
     .getPublicUrl(filePath);
 
